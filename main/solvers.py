@@ -6,16 +6,6 @@ from scipy import optimize
 from manifold import Manifold
 from theta import rtbm
 
-
-
-
-
-
-
-
-
-
-    
  
 
 
@@ -26,11 +16,8 @@ class Solver(ABC):
     
     def __init__(self, cost, model, x_data, y_data=None, verbosity=2, batchsize=250, validation=0.33, empirical_cost=False):
 
-        if (type(model) != rtbm.RTBM):
-            print('Error: works only with RTBM objects')
-            return False
+        assert (type(model) == rtbm.RTBM), "works only with RTBM objects"
 
-        print(cost)
         self.empirical_cost = empirical_cost
         self.input_cost = cost
         self.model = model
@@ -163,18 +150,18 @@ class CMA_es(Solver):
         self.batch = self.training_set
         self.popsize = popsize
         self.m2 = m2
-        if self.m2 > popsize:
-            print('Error: too large m2')
-            return False
+        assert (self.m2 < popsize), "too large m2"
+
         self.init()
         
-
         if starting_x != None:
             x = starting_x
             self.model.set_parameters(x)
         else:    
             x = self.params2manifold(self.model.get_parameters())
 
+        print('CMA-ES \n', 'Population = ', self.popsize, '\n Mutants = ', self.m2, '\n')
+        print('Epochs', '\t\t', 'Cost', '\t\t')
 
         cost_list = []
             
@@ -192,7 +179,8 @@ class CMA_es(Solver):
             if cost < best_cost:
                 best_cost = cost
                 best_x = x
-            print('$$$$$$$$$$$$$$$$$$$$$$$$$ \n','### Iter ->', i, '\n', '----> COST : ', cost,'\n$$$$$$$$$$$$$$$$$$$$$$$$$')
+            if(i%5==0):
+                print( i, '\t\t', cost,'\t\t')
             # sampling new generation starting from x
             #print('# New Generation')
             v, _= self.new_gen(x)
@@ -260,7 +248,7 @@ class CMA_es(Solver):
             cost[i] = self.cost(pop[i])
             #print(cost[i])
             while math.isnan(cost[i]) or cost[i] == float('Inf'):
-                #print('*****************punto di merda')
+                #print('*****************punto problematico')
                 v[i] = self.s*np.random.multivariate_normal(np.zeros(self.N), self.C, size=1)
                 tmp = self.params2manifold(v[i])
                 #print('####### Nuovo individuo \n', pop[i])
