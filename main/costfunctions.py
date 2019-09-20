@@ -1,8 +1,12 @@
+
+
+
+
+
+
 import numpy as np
 import scipy as sp
 from theta.costfunctions import logarithmic
-
-
 
 
 
@@ -23,9 +27,6 @@ class KullbackLeibler():
         pdf = pdf.reshape(1,pdf.size)    
         bins = bins.reshape(1,bins.size)
         return np.sum(sp.special.kl_div(pdf, self.model(bins)))
-
-
-
 
     
     
@@ -50,10 +51,6 @@ class LogLikelyhood():
 
 
 
-
-
-
-
 class sparselog():
     """Sparse Loglikelyhood.
 
@@ -71,8 +68,6 @@ class sparselog():
         c2 = np.sum(np.abs(w)) # L1 norm
         return logarithmic.cost(x) + self.l*c1 + self.l*c2
     
-
-
 
 
 

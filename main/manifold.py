@@ -1,11 +1,11 @@
+
+
+
+
+
+
 import numpy as np
 import scipy as sp
-
-
-
-
-
-
 
 
 
@@ -36,7 +36,6 @@ class Manifold(object):
         invx = sp.linalg.inv(x[1])
         tmp = np.dot(invx, np.dot(v[1], np.dot(invx, v[1])))
         pn = np.trace(tmp)
-        #return (en, pn)
         return np.sqrt(en + pn)     
 
     def transp (self, x1, x2, v):
