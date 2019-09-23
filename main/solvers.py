@@ -10,7 +10,7 @@ from theta import rtbm
 
 
 class Solver(ABC):
-    """Abstract solver class.
+    """Abstract solver class for manifold optimization.
 
     """
     
@@ -29,8 +29,7 @@ class Solver(ABC):
         self.training_err = 0
 
         self.man = Manifold(self.model)
-        
-        
+                
     @abstractmethod
     def train(self, starting_x=None):
         pass
@@ -141,7 +140,7 @@ class Solver(ABC):
 
 
 class CMA_es(Solver):
-    """CMA evolution strategy.
+    """CMA evolution strategy on manifold.
 
     """
     
@@ -169,41 +168,32 @@ class CMA_es(Solver):
         vs = 0
         best_cost = float('Inf')
         best_x = x
+        
         #while True:
-        for i in range(1000):
+        for i in range(1500):
             
-            #print('######### Actual Point \n', x)
             cost = self.error(self.validation_set)#self.cost(x)
             if i%5==0:
                 cost_list.append([i,cost])
+                print( i, '\t\t', cost,'\t\t')
             if cost < best_cost:
                 best_cost = cost
                 best_x = x
-            if(i%5==0):
-                print( i, '\t\t', cost,'\t\t')
             # sampling new generation starting from x
-            #print('# New Generation')
             v, _= self.new_gen(x)
-            #print('\\\\\ V ///// \n', v)
         
             # performing recombination based on best fitted individuals
-            #print('## Recombination')
             v_best = self.recombination(v)
 
             # updating evolution paths
-            #print('### Updating internal parameters')
             vc = (1-self.cc)*vc + np.sqrt(self.cc*(2-self.cc)*self.meff)*v_best/self.s  # covariance path
             vs = np.real((1-self.cs)*vs + np.sqrt(self.cs*(2-self.cs)*self.meff)/self.s*np.dot(sp.linalg.sqrtm(sp.linalg.inv(self.C)),v_best))  # sigma path
-            #print('\\\\\ Vc ///// \n', vc)
-            #print('\\\\\ Vs ///// \n', vs)
             
             # update covariance matrix
             self.C_update(v, vc)
-            #print('\\\\\ C ///// \n', self.C)
             
             # update stepsize
             self.s_update(x, vs)
-            #print('\\\\\ Sigma ///// \n', self.s)
 
             # backuping manifold point for future parallel transport
             x_bak = x
@@ -213,15 +203,14 @@ class CMA_es(Solver):
 
             self.model.set_parameters(self.manifold2params(x))
             #self.model = model
-            #print('\\\\\ New X ///// \n', self.man.manifold2params(x))
             
             # parallel transport
             vc, vs = self.transport(x_bak, x, vc, vs)
-            #print('>>>>>>>>> TRansported vs \n', vs)
 
         self.model.set_parameters(self.manifold2params(best_x))
         #self.model = model
         #return self.model.get_parameters()
+        print('*** Best Solution: \n np.array(', self.model.get_parameters(), ')')
         return cost_list
         
     def init(self):
@@ -243,19 +232,13 @@ class CMA_es(Solver):
         for i in range(self.popsize):
             tmp = self.params2manifold(v[i])
             pop.append(self.man.retr(x, tmp))
-            #print('####### Nuovo individuo \n', pop[i])
-            #print('---> calcolo costo')
             cost[i] = self.cost(pop[i])
-            #print(cost[i])
             while math.isnan(cost[i]) or cost[i] == float('Inf'):
                 #print('*****************punto problematico')
                 v[i] = self.s*np.random.multivariate_normal(np.zeros(self.N), self.C, size=1)
                 tmp = self.params2manifold(v[i])
-                #print('####### Nuovo individuo \n', pop[i])
                 pop[i] = (self.man.retr(x, tmp))
-                #print('---> calcolo costo')
                 cost[i] = self.cost(pop[i])
-                #print(cost[i])
         v, cost = self.sort(v, cost)
         return (v, cost)
     
@@ -281,18 +264,15 @@ class CMA_es(Solver):
     def s_update(self, x, vs):
         E = np.sqrt(2)*sp.special.gamma((self.N+1)/2)/sp.special.gamma(self.N/2)
         Vs = self.params2manifold(vs)
-        #print('>>>>>>>> vs norm \n',self.man.norm(x, Vs))
         self.s = min(self.s*np.exp((self.man.norm(x, Vs)/E-1)*self.cs/self.ds), 0.001)
     
     def transport(self, x1, x2, vc, vs): # check that is all right
         # first transport vc & vs
-        #print('#### Transport')
         Vc = self.man.transp(x1, x2, self.params2manifold(vc))
         Vs = self.man.transp(x1, x2, self.params2manifold(vs))
         # now transport C
         #e = self.coord_sys()
         #self.Ctransp(x1, x2, e)
-        #print('new C ', self.C)
         return self.manifold2params(Vc), self.manifold2params(Vs)
 
     def coord_sys(self):
@@ -315,7 +295,6 @@ class CMA_es(Solver):
         for i in range(nh+nv+(nh+nv)**2):
             et.append(self.man.transp(x1, x2, e[i]))
             et[i] = self.manifold2params(et[i])
-            #print('\\\\\\\\\\\ et[i] \n', et[i])
         newC = np.zeros((self.N, self.N))
         for k in range(self.N):
             for l in range(self.N):
@@ -338,7 +317,7 @@ class CMA_es(Solver):
 
 
 class AMSGrad(Solver):
-    """AMSGrad.
+    """AMSGrad on manifold.
 
     """
 
@@ -350,7 +329,7 @@ class AMSGrad(Solver):
         eps = 1e-8
         cost_list = []
 
-        print('epochs', '\t\t', 'validation err', '\t\t', 'gradnorm', '\t\t', 'average training sample err')
+        print('epochs', '\t\t', 'validation err', '\t\t', 'gradnorm', '\t\t')
         
         # starting point
         if starting_x != None:
@@ -378,6 +357,8 @@ class AMSGrad(Solver):
         # calculating riemannian gradient
         egrad = self.egrad(x)
         grad = self.man.rgrad(x, egrad)
+
+        print(t, '\t\t', self.validation_err, '\t\t', self.man.norm(x, grad), '\t\t')
         
         # 1st and 2nd moments estimates
         m = [(1-b1)*grad[0],(1-b1)*grad[1]]
@@ -404,7 +385,7 @@ class AMSGrad(Solver):
         max_epochs = 0
         
         # repeat till early stopping
-        while t<1000 :
+        while t<1500 :
             # step t
             t = t + 1
             max_epochs = max_epochs + 1
@@ -416,16 +397,17 @@ class AMSGrad(Solver):
             cost = self.cost(x)
             err_sum = err_sum + cost
             self.training_err = err_sum/t
-            err_strip[k] = cost
-            k = k+1
+            #err_strip[k] = cost
+            #k = k+1
             if t%5 == 0 :
                 self.validation_err = self.error(self.validation_set)
                 cost_list.append([t,self.validation_err])
-                k = 0
-                if self.validation_err < self.opt_val_err :
-                    self.opt_val_err = self.validation_err
-                    x_opt = x
-                    max_epochs = 0
+                print(t, '\t\t', self.validation_err, '\t\t', self.man.norm(x, grad), '\t\t')
+                #k = 0
+                #if self.validation_err < self.opt_val_err :
+                    #self.opt_val_err = self.validation_err
+                    #x_opt = x
+                    #max_epochs = 0
                 #print(t, '\t\t', self.validation_err, '\t\t', gradnorm, '\t\t', self.training_err)
                 #if self.GL()/self.Pk(err_strip, 5) > 0.1 :
                     #break
@@ -464,6 +446,7 @@ class AMSGrad(Solver):
             self.model.set_parameters(self.manifold2params(x))
 
         self.model.set_parameters(self.manifold2params(x_opt))
+        print('*** Best Solution: \n np.array(', self.model.get_parameters(), ')')
         
         return np.asarray(cost_list)
 
