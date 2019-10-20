@@ -3,6 +3,8 @@ sys.path.append('../../main')
 
 from solvers import CMA_es, AMSGrad
 from costfunctions import KullbackLeibler, LogLikelyhood
+from theta.costfunctions import logarithmic
+from theta.minimizer import CMA
 
 import numpy as np
 from theta import rtbm
@@ -33,14 +35,16 @@ data = mixture(n)
 data = data.reshape(1, data.size)
 
 # RTBM model
-model = rtbm.RTBM(1, 2, random_bound=1)
+model = rtbm.RTBM(1, 2, random_bound=1, init_max_param_bound=60)
 
 # Training
-minim = CMA_es(KullbackLeibler(model), model, data, empirical_cost=True)
+minim = CMA_es(KullbackLeibler(model, data), model, data, empirical_cost=True)
 #minim = AMSGrad(KullbackLeibler(model), model, data, empirical_cost=True)
+#minim = CMA(True)
 
 solution = minim.train(popsize=30, m2=20)  # this is for CMA_es
 #solution = minim.train()                  # this is for AMSGrad
+#solution = minim.train(logarithmic, model, data, tolfun=1e-3)
 
 
 # Plotting
