@@ -227,25 +227,21 @@ class CMA_es(Solver):
         self.ds = 1 + 2*max(0,np.sqrt((self.meff-1)/(self.N+1))-1) + self.cs
         self.s = 0.01   # step size
         self.C = np.identity(self.N)
-        self.pop = np.zeros(self.popsize)
+        self.pop = np.zeros((self.popsize, 2))
             
     def new_gen(self, x):
         v = self.s*np.random.multivariate_normal(np.zeros(self.N), self.C, size=self.popsize)
-        cost = np.zeros(self.popsize)
         for i in range(self.popsize):
-            tmp = self.params2manifold(v[i])
-            pop.append(self.man.retr(x, tmp))
-            cost[i] = self.cost(pop[i])
-            while math.isnan(cost[i]) or cost[i] == float('Inf'):
+            self.pop[i,0] = v[0]
+            self.pop[i,1] = self.cost(self.man.retr(x, self.params2manifold(v[i])))
+            while math.isnan(self.pop[i,1]) or self.pop[i,1] == float('Inf'):
                 print('*****************punto problematico')
                 v[i] = self.s*np.random.multivariate_normal(np.zeros(self.N), self.C, size=1)
-                tmp = self.params2manifold(v[i])
-                pop[i] = (self.man.retr(x, tmp))
-                cost[i] = self.cost(pop[i])
+                self.pop[i,0] = v[i]
+                self.pop[i,1] = self.cost(self.man.retr(x, self.params2manifold(v[i])))
         v, cost = self.sort(v, cost)
-        return (v, cost)
     
-    def recombination(self, v):
+    def recombination(self):
         best = 0
         for i in range(self.m2):
             best = best + self.w[i]*v[i]
