@@ -14,7 +14,7 @@ class Solver(ABC):
 
     """
     
-    def __init__(self, cost, model, x_data, y_data=None, verbosity=2, batchsize=250, validation=0.33, empirical_cost=False):
+    def __init__(self, cost, model, x_data, y_data=None, verbosity=2, batchsize=32, validation=0.33, empirical_cost=False):
 
         assert (type(model) == rtbm.RTBM), "works only with RTBM objects"
 
@@ -25,7 +25,8 @@ class Solver(ABC):
         self.y_data = y_data
         self.batchsize = batchsize
         self.validation_set, self.training_set = self.set_init(validation)
-        self.batch = self.batch_gen()
+        #self.batch = self.batch_gen()
+        self.batch = self.training_set
         self.training_err = 0
 
         self.man = Manifold(self.model)
@@ -43,17 +44,19 @@ class Solver(ABC):
                 val.append(self.x_data[0,i])
             else:
                 train.append(self.x_data[0,i])
-        return np.asarray(val), np.asarray(train)        
+        val = np.asarray(val)
+        train = np.asarray(train)
+        return val.reshape(1,val.size), train.reshape(1,train.size)      
     
     def batch_gen(self):
         index = [int(np.random.rand()*self.training_set.size) for j in range(self.batchsize)]
-        return np.asarray([self.training_set[k] for k in index]).reshape(1,self.batchsize)
+        return np.asarray([self.training_set[0][k] for k in index]).reshape(1,self.batchsize)
 
     def error(self, set):
         if self.empirical_cost == True:
             return self.input_cost.cost(set.reshape(1,set.size))
         else:
-            return self.input_cost.cost(self.model(set.reshape(1,set.size)))
+            return self.input_cost.cost(self.model(set.reshape(1,set.size)))   #warning many calls to reshape!!!
     
     def GL(self):  # generalization loss in %
         return 100*(self.validation_err/self.opt_val_err - 1)
@@ -146,7 +149,6 @@ class CMA_es(Solver):
     
     def train(self, starting_x=None, popsize=4, m2=3):
 
-        self.batch = self.training_set
         self.popsize = popsize
         self.m2 = m2
         assert (self.m2 < popsize), "too large m2"
@@ -170,9 +172,9 @@ class CMA_es(Solver):
         best_x = x
         
         #while True:
-        for i in range(1500):
-            
-            cost = self.error(self.validation_set)#self.cost(x)
+        for i in range(200):
+             
+            cost = self.error(self.training_set)#self.cost(x)
             if i%5==0:
                 cost_list.append([i,cost])
                 print( i, '\t\t', cost,'\t\t')
@@ -180,17 +182,17 @@ class CMA_es(Solver):
                 best_cost = cost
                 best_x = x
             # sampling new generation starting from x
-            v, _= self.new_gen(x)
-        
+            self.new_gen(x)
+            
             # performing recombination based on best fitted individuals
-            v_best = self.recombination(v)
+            v_best = self.recombination()
 
             # updating evolution paths
             vc = (1-self.cc)*vc + np.sqrt(self.cc*(2-self.cc)*self.meff)*v_best/self.s  # covariance path
             vs = np.real((1-self.cs)*vs + np.sqrt(self.cs*(2-self.cs)*self.meff)/self.s*np.dot(sp.linalg.sqrtm(sp.linalg.inv(self.C)),v_best))  # sigma path
             
             # update covariance matrix
-            self.C_update(v, vc)
+            self.C_update(vc)
             
             # update stepsize
             self.s_update(x, vs)
@@ -206,7 +208,7 @@ class CMA_es(Solver):
             
             # parallel transport
             vc, vs = self.transport(x_bak, x, vc, vs)
-
+            
         self.model.set_parameters(self.manifold2params(best_x))
         #self.model = model
         #return self.model.get_parameters()
@@ -224,41 +226,31 @@ class CMA_es(Solver):
         self.ds = 1 + 2*max(0,np.sqrt((self.meff-1)/(self.N+1))-1) + self.cs
         self.s = 0.01   # step size
         self.C = np.identity(self.N)
-            
+        self.pop = [[0,0] for i in range(self.popsize)]
+        
     def new_gen(self, x):
         v = self.s*np.random.multivariate_normal(np.zeros(self.N), self.C, size=self.popsize)
-        cost = np.zeros(self.popsize)
-        pop = []
         for i in range(self.popsize):
-            tmp = self.params2manifold(v[i])
-            pop.append(self.man.retr(x, tmp))
-            cost[i] = self.cost(pop[i])
-            while math.isnan(cost[i]) or cost[i] == float('Inf'):
-                #print('*****************punto problematico')
+            self.pop[i][0] = v[i]
+            self.pop[i][1] = self.cost(self.man.retr(x, self.params2manifold(v[i])))
+            while math.isnan(self.pop[i][1]) or self.pop[i][1] == float('Inf'):
+                print('*****************punto problematico')
                 v[i] = self.s*np.random.multivariate_normal(np.zeros(self.N), self.C, size=1)
-                tmp = self.params2manifold(v[i])
-                pop[i] = (self.man.retr(x, tmp))
-                cost[i] = self.cost(pop[i])
-        v, cost = self.sort(v, cost)
-        return (v, cost)
+                self.pop[i][0] = v[i]
+                self.pop[i][1] = self.cost(self.man.retr(x, self.params2manifold(v[i])))
+        self.pop.sort(key = lambda x: x[1])
     
-    def recombination(self, v):
+    def recombination(self):
         best = 0
         for i in range(self.m2):
-            best = best + self.w[i]*v[i]
+            best = best + self.w[i]*self.pop[i][0]
         return best
-    
-    def sort(self, pop, val):
-        tmp = [[pop[i],val[i]] for i in range(self.popsize)]
-        tmp.sort(key = lambda x: x[1])
-        p = [tmp[i][0] for i in range(self.popsize)]
-        v = [tmp[i][1] for i in range(self.popsize)]
-        return p,v
 
-    def C_update(self, v, vc):
+    def C_update(self, vc):
         tmp = 0
         for i in range(self.m2):
-            tmp = tmp + self.w[i]*np.dot(v[i].reshape(self.N,1),v[i].reshape(self.N,1).T)
+            v = np.asarray(self.pop[i][0]).reshape(self.N,1)
+            tmp = tmp + self.w[i]*np.dot(v,v.T)
         self.C = self.ccov*(1-1/self.meff)*(1/self.s**2)*tmp + (1-self.ccov)*self.C + self.ccov/self.meff*np.dot(vc.reshape(self.N,1),vc.reshape(self.N,1).T)
 
     def s_update(self, x, vs):
@@ -364,13 +356,13 @@ class AMSGrad(Solver):
         m = [(1-b1)*grad[0],(1-b1)*grad[1]]
         v = [(1-b2)*grad[0]**2,(1-b2)*grad[1]**2]
 
-        v_bar = v
+        v_bar = [self.man.enorm(x,v),self.man.pnorm(x,v)]
         
         # backuping x for future parallel transport
         x_bak = x
 
         # AMSGrad update rule
-        dir = [-a*m[0]/(np.sqrt(v_bar[0])+eps),-a*m[1]/(np.sqrt(v_bar[1])+eps)]
+        dir = [-a*m[0]/(v_bar[0]+eps),-a*m[1]/(v_bar[1]+eps)]
 
         # retraction
         x = self.man.retr(x,dir)
@@ -385,14 +377,14 @@ class AMSGrad(Solver):
         max_epochs = 0
         
         # repeat till early stopping
-        while t<1500 :
+        while t<10000 :
             # step t
             t = t + 1
             max_epochs = max_epochs + 1
             
             # generating new minibatch
             self.batch = self.batch_gen()
-
+                
             # updating errors
             cost = self.cost(x)
             err_sum = err_sum + cost
@@ -428,14 +420,13 @@ class AMSGrad(Solver):
             v[0] = b2*v[0] + (1-b2)*grad[0]**2
             v[1] = b2*v[1] + (1-b2)*grad[1]**2
 
-            v_bar = [np.maximum(v[0],v_bar[0]), np.maximum(v[1],v_bar[1])]
+            v_bar = [np.maximum(self.man.enorm(x,v),v_bar[0]),np.maximum(self.man.pnorm(x,v),v_bar[1])]
             
             # backuping x for future parallel transport            
             x_bak = x
 
-            # adam update rule
-            dir = [-a*m[0]/(np.sqrt(t)*(np.sqrt(v_bar[0])+eps)),-a*m[1]/(np.sqrt(v_bar[1])+eps)]
-            
+            # adam update rule            
+            dir = [-a*m[0]/(v_bar[0]+eps), -a*m[1]/(v_bar[1]+eps)]            
             # retraction
             x = self.man.retr(x,dir)
             
@@ -450,3 +441,65 @@ class AMSGrad(Solver):
         
         return np.asarray(cost_list)
 
+
+
+
+
+class SGD(Solver):
+
+    def train(self, starting_x=None):
+
+        self.m = 0.9
+        self.lr = 0.001
+        
+        print('epochs', '\t\t', 'validation err', '\t\t', 'gradnorm', '\t\t')
+        
+        # starting point
+        if starting_x != None:
+            x = starting_x
+            self.model.set_parameters(self.manifol2params(x))
+        else:    
+            x = self.params2manifold(self.model.get_parameters())
+            
+        x_opt = x
+
+        t = 0
+        v = [0,0]
+        
+        # repeat till early stopping
+        while t<1500 :
+            
+            # step t
+            t = t + 1
+
+            # generating new minibatch
+            self.batch = self.batch_gen()
+
+            # updating errors
+            cost = self.cost(x)
+            if t%5 == 0 :
+                self.validation_err = self.error(self.validation_set)
+                print(t, '\t\t', self.validation_err, '\t\t', self.man.norm(x, grad), '\t\t')
+
+            # new gradient
+            egrad = self.egrad(x)
+            grad = self.man.rgrad(x, egrad)
+            gradnorm = self.man.norm(x, grad)
+
+            # dir update
+            v = [self.m * v[0] + self.lr * grad[0], self.m * v[1] + self.lr * grad[1]]
+            dir = [-v[0],-v[1]]
+            
+            # backuping x for future parallel transport            
+            x_bak = x
+
+            # retraction
+            x = self.man.retr(x,dir)
+
+            # parallel transport
+            v = self.man.transp(x_bak,x,v)
+
+            self.model.set_parameters(self.manifold2params(x))
+
+        self.model.set_parameters(self.manifold2params(x_opt))
+        print('*** Best Solution: \n np.array(', self.model.get_parameters(), ')')

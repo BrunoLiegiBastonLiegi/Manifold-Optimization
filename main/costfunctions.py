@@ -6,8 +6,8 @@
 
 import numpy as np
 import scipy as sp
+import scipy.stats
 from theta.costfunctions import logarithmic
-
 
 
 
@@ -16,17 +16,11 @@ class KullbackLeibler():
     """Empirical  Kullback Leibler divergence.
 
     """
-    def __init__(self, model):
-        self.model = model
-    
+    def __init__(self, data):
+        self.Q = sp.stats.rv_histogram(np.histogram(data, bins='auto', density=True)).pdf(data).flatten()
+        
     def cost(self, x, *y):
-        pdf, bins = np.histogram(x, bins='auto', density=True)
-        for i in range(bins.size-1):
-            bins[i] = 0.5*(bins[i]+bins[i+1])
-        bins = np.delete(bins,bins.size-1)    
-        pdf = pdf.reshape(1,pdf.size)    
-        bins = bins.reshape(1,bins.size)
-        return np.sum(sp.special.kl_div(pdf, self.model(bins)))
+        return np.sum(sp.special.kl_div(self.Q, x))
 
     
     
