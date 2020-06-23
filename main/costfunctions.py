@@ -1,9 +1,5 @@
 
 
-
-
-
-
 import numpy as np
 import scipy as sp
 import scipy.stats
@@ -17,11 +13,31 @@ class KullbackLeibler():
 
     """
     def __init__(self, data):
-        self.Q = sp.stats.rv_histogram(np.histogram(data, bins='auto', density=True)).pdf(data).flatten()
+        self.pdf = sp.stats.rv_histogram(np.histogram(data, bins='auto', density=True))
+        self.Q = self.pdf.pdf(data).flatten()
         
     def cost(self, x, *y):
+            return np.sum(sp.special.kl_div(self.Q, x))
+
+        
+        
+class KLdiv():
+    def __init__(self, data):
+        self.Q, self.bins = np.histogram(data, bins='auto', density=True)
+        for i in range(self.bins.size-1):
+            self.bins[i] = 0.5*(self.bins[i]+self.bins[i+1])
+        self.bins = np.delete(self.bins,self.bins.size-1)    
+        self.Q = self.Q.reshape(1,self.Q.size)    
+        self.bins = self.bins.reshape(1,self.bins.size)
+        
+    def cost(self, x):
         return np.sum(sp.special.kl_div(self.Q, x))
 
+    def get_bins(self):
+        return self.bins
+
+    def get_pdf(self):
+        return self.Q
     
     
 
