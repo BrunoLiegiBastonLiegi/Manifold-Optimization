@@ -1,14 +1,15 @@
 import sys
 sys.path.append('../../main')
 
-from solvers import CMA_es, AMSGrad, SGD
-from costfunctions import KullbackLeibler, LogLikelyhood
+from solvers import CMA_es, SGD, RMSProp
+from costfunctions import KullbackLeibler, LogLikelyhood, KLdiv
 
 import numpy as np
 from theta import rtbm
 from theta.costfunctions import logarithmic
 import matplotlib.pyplot as plt
 
+#from theta.minimizer import SGD
 
 
 # Generating Data
@@ -34,16 +35,21 @@ data = gaussian_mixture(n)
 data = data.reshape(1, data.size)
 
 # RTBM model
-model = rtbm.RTBM(1, 2, random_bound=1)
+model = rtbm.RTBM(1, 2, random_bound=1, diagonal_T=True)
+
+print(model.get_parameters())
 
 # Training
-minim = CMA_es(KullbackLeibler(model,data), model, data, empirical_cost=True)
+#minim = CMA_es(logarithmic, model, data)
 #minim = AMSGrad(KullbackLeibler(model,data), model, data, empirical_cost=True)
 #minim = SGD(KullbackLeibler(model,data), model, data, empirical_cost=True)
+#minim = SGD(logarithmic, model, data)
+minim = RMSProp(logarithmic, model, data)
+#minim = SGD()
 
-solution = minim.train(popsize=20, m2=7)  # this is for CMA_es
-#solution = minim.train()                  # this is for AMSGrad
-
+#solution = minim.train(popsize=20, m2=7)  # this is for CMA_es
+solution = minim.train()                  # this is for AMSGrad
+#solution = minim.train(logarithmic, model, data)
 
 # Plotting
 
